@@ -8,26 +8,18 @@ embedder = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
 all_emb = np.load('embeddings.npy')
 
 def recommend(prompt, option):
+    raw_data = pd.read_csv("data/titles.csv", encoding='utf-8')
     titles_unfiltered = pd.read_csv("data/titles.csv", encoding='utf-8', usecols=['title', 'description', 'type'])
-    descriptions = titles_unfiltered.drop(['title'], axis=1)
-    
-    descriptions = descriptions.dropna()
     titles_unfiltered = titles_unfiltered.dropna() #6114 titles
-    
     titles_unfiltered = titles_unfiltered.reset_index(drop=True)
-    descriptions = descriptions.reset_index(drop=True)
     
-    if option == "Movie": #description is correct, title is wrong
+    if option == "Movie": 
         titles = titles_unfiltered.loc[titles_unfiltered['type'] == 'MOVIE']
-        descriptions = descriptions.loc[descriptions['type'] == 'MOVIE']
-        
         removed = titles_unfiltered.index.difference(titles.index).tolist()
         filtered_emb = np.delete(all_emb, removed, 0)
         
-    elif option == "TV Show": #description is correct, title is wrong
+    elif option == "TV Show": 
         titles = titles_unfiltered.loc[titles_unfiltered['type'] == 'SHOW']
-        descriptions = descriptions.loc[descriptions['type'] == 'SHOW']
-        
         removed = titles_unfiltered.index.difference(titles.index).tolist()
         filtered_emb = np.delete(all_emb, removed, 0)
         
@@ -36,17 +28,18 @@ def recommend(prompt, option):
         titles = titles_unfiltered
         
     titles = titles.drop(['description', 'type'], axis=1)
-    descriptions = descriptions.drop(['type'], axis=1) 
-    
     prompt_emb = embedder.encode(prompt, convert_to_tensor=True)
     res = util.semantic_search(prompt_emb, filtered_emb, top_k=1)
     res = pd.DataFrame(res[0], columns=['corpus_id', 'score'])
     match = titles.iloc[res['corpus_id']]
-    des = descriptions.iloc[res['corpus_id']]
+    pd.set_option('display.max_colwidth', None)
+    des = raw_data.loc[raw_data['title'] == match.values[0][0], 'description']
+    imdb = raw_data.loc[raw_data['title'] == match.values[0][0], 'imdb_score']
     
     return (
         match.values[0][0],
-        des.values[0][0]
+        des.to_string(index=False),
+        imdb.to_string(index=False)
     )
     
 app = gr.Blocks(theme=gr.themes.Soft(primary_hue=gr.themes.colors.red))
@@ -82,13 +75,16 @@ with app:
             result = gr.Textbox(
                 label="Your recommendation... ",
             )
+            rating = gr.Textbox(
+                label="IMDb Rating"
+            )
             description = gr.Textbox(
                 label="Description"
             )
     submit.click(
         fn=recommend,
         inputs=[prompt, choice],
-        outputs=[result, description]
+        outputs=[result, description, rating]
     )
             
             
